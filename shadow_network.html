@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>CatCoin Network</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#0a0a0a;color:#00ff41;font:11px 'Courier New',monospace;overflow:hidden}
+        canvas{display:block;margin:0 auto;border:1px solid #003300;background:radial-gradient(circle at 50% 50%,#001100,#000000)}
+        #ui{position:fixed;top:8px;left:8px;z-index:100;background:rgba(0,20,0,0.9);padding:8px;border:1px solid #003300;border-radius:4px}
+        .stat{margin:2px 0;display:flex;align-items:center;gap:6px}
+        .online{color:#00ff41}
+        .offline{color:#ff4444}
+        #wallet{position:fixed;top:8px;right:8px;background:rgba(0,20,0,0.9);padding:8px;border:1px solid #003300;border-radius:4px;min-width:200px}
+        .coin{color:#ffaa00;font-weight:bold}
+        #metamask{margin-top:5px;padding:3px 6px;background:#1a472a;border:1px solid #00ff41;border-radius:3px;cursor:pointer;font-size:10px}
+        #metamask:hover{background:#2a573a}
+        #metamask.connected{background:#0a4a0a}
+        #chat{position:fixed;bottom:8px;left:8px;width:320px;height:80px;background:rgba(0,20,0,0.95);border:1px solid #003300;overflow-y:auto;padding:4px;font-size:10px}
+        #input{position:fixed;bottom:90px;left:8px;width:312px;background:#001100;color:#00ff41;border:1px solid #003300;padding:4px;font:11px monospace;border-radius:3px}
+        .mining{animation:pulse 1s infinite}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+        .block{fill:#003300;stroke:#00ff41;stroke-width:1}
+        .block.mined{fill:#004400}
+        .cat{stroke:#00ff41;stroke-width:1}
+        .shadow{fill:rgba(0,255,65,0.1)}
+        .coin-particle{fill:#ffaa00}
+        .network-line{stroke:#003300;stroke-width:1;stroke-dasharray:2,2}
+        .active-line{stroke:#00ff41;stroke-width:2;animation:flow 2s infinite}
+        @keyframes flow{0%{stroke-dashoffset:0}100%{stroke-dashoffset:20}}
+        .web3-indicator{color:#8a2be2;font-weight:bold}
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="stat">🐱 <span id="status" class="offline">OFFLINE</span></div>
+        <div class="stat">⚡ Players: <span id="players">1</span></div>
+        <div class="stat">⛏️ Block: <span id="block">0</span></div>
+        <div class="stat mining">🔄 <span id="mining">Mining...</span></div>
+        <div class="stat web3-indicator" id="web3-status">🦊 Web3: Disconnected</div>
+    </div>
+    <div id="wallet">
+        <div class="coin">💰 CatCoin: <span id="coins">0</span></div>
+        <div style="font-size:9px;color:#666">Game Wallet: <span id="address">...</span></div>
+        <div id="metamask" onclick="connectWeb3()">🦊 Connect MetaMask</div>
+        <div style="font-size:9px;color:#8a2be2;margin-top:2px" id="eth-address">ETH: Not connected</div>
+        <div style="font-size:9px;color:#8a2be2" id="eth-balance">Balance: 0 ETH</div>
+    </div>
+    <canvas id="game" width="800" height="600"></canvas>
+    <div id="chat"></div>
+    <input id="input" type="text" placeholder="Type to chat, /trade [amount] [wallet], or /mint [amount]">
+
+    <script>
+        // Web3/MetaMask Integration
+        let web3Provider = null;
+        let userAccount = null;
+        let ethBalance = 0;
+        
+        async function connectWeb3() {
+            if (typeof window.ethereum !== 'undefined') {
+                try {
+                    // Request account access
+                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    userAccount = accounts[0];
+                    web3Provider = window.ethereum;
+                    
+                    // Get balance
+                    const balance = await window.ethereum.request({
+                        method: 'eth_getBalance',
+                        params: [userAccount, 'latest']
+                    });
+                    ethBalance = parseInt(balance, 16) / Math.pow(10, 18); // Convert from wei to ETH
+                    
+                    updateWeb3UI();
+                    addChatMessage(`🦊 MetaMask connected: ${userAccount.slice(0,8)}...`, 'Web3');
+                    
+                    // Listen for account changes
+                    window.ethereum.on('accountsChanged', (accounts) => {
+                        if (accounts.length === 0) {
+                            disconnectWeb3();
+                        } else {
+                            userAccount = accounts[0];
+                            updateWeb3UI();
+                        }
+                    });
+                    
+                    // Create Web3-linked game wallet
+                    if (game.blockchain && !game.myWallet) {
+                        game.myWallet = game.blockchain.createWeb3Wallet(userAccount);
+                        updateWallet();
+                    }
+                    
+                } catch (error) {
+                    console.error('Failed to connect to MetaMask:', error);
+                    addChatMessage('❌ MetaMask connection failed', 'Web3');
+                }
+            } else {
+                addChatMessage('🦊 MetaMask not detected. Install MetaMask to use Web3 features!', 'Web3');
+                // Still allow game to work without MetaMask
+            }
+        }
+        
+        function disconnectWeb3() {
+            web3Provider = null;
+            userAccount = null;
+            ethBalance = 0;
+            updateWeb3UI();
+            addChatMessage('🦊 MetaMask disconnected', 'Web3');
+        }
+        
+        function updateWeb3UI() {
+            const web3Status = document.getElementById('web3-status');
+            const metamaskBtn = document.getElementById('metamask');
+            const ethAddress = document.getElementById('eth-address');
+            const ethBalanceEl = document.getElementById('eth-balance');
+            
+            if (userAccount) {
+                web3Status.textContent = '🦊 Web3: Connected';
+                web3Status.style.color = '#8a2be2';
+                metamaskBtn.textContent = '🦊 Connected';
+                metamaskBtn.classList.add('connected');
+                ethAddress.textContent = `ETH: ${userAccount.slice(0,8)}...${userAccount.slice(-4)}`;
+                ethBalanceEl.textContent = `Balance: ${ethBalance.toFixed(4)} ETH`;
+            } else {
+                web3Status.textContent = '🦊 Web3: Disconnected';
+                web3Status.style.color = '#666';
+                metamaskBtn.textContent = '🦊 Connect MetaMask';
+                metamaskBtn.classList.remove('connected');
+                ethAddress.textContent = 'ETH: Not connected';
+                ethBalanceEl.textContent = 'Balance: 0 ETH';
+            }
+        }
+
+        // Enhanced Blockchain with Web3 integration
+        class CatCoin {
+            constructor() {
+                this.blocks = [];
+                this.pendingTransactions = [];
+                this.wallets = new Map();
+                this.web3Wallets = new Map(); // Links game wallets to ETH addresses
+                this.difficulty = 2;
+                this.miningReward = 10;
+                this.currentBlock = 0;
+                this.stakingPools = new Map();
+            }
+
+            createWallet() {
+                const id = Math.random().toString(36).substr(2, 8);
+                this.wallets.set(id, {balance: 100, address: id, isWeb3: false});
+                return id;
+            }
+            
+            createWeb3Wallet(ethAddress) {
+                const id = 'w3_' + ethAddress.slice(-6);
+                const bonus = ethBalance > 0.001 ? 500 : 100; // Bonus for ETH holders
+                this.wallets.set(id, {balance: bonus, address: id, isWeb3: true, ethAddress});
+                this.web3Wallets.set(id, ethAddress);
+                addChatMessage(`💎 Web3 wallet created with ${bonus} CatCoin bonus!`, 'Blockchain');
+                return id;
+            }
+
+            mine(wallet) {
+                const timestamp = Date.now();
+                const web3Bonus = this.wallets.get(wallet)?.isWeb3 ? 5 : 0;
+                const totalReward = this.miningReward + web3Bonus;
+                
+                const block = {
+                    id: this.currentBlock++,
+                    timestamp,
+                    transactions: [...this.pendingTransactions],
+                    miner: wallet,
+                    reward: totalReward,
+                    hash: this.generateBlockHash(timestamp, wallet),
+                    nonce: Math.floor(Math.random() * 10000),
+                    web3Enhanced: web3Bonus > 0
+                };
+                
+                this.blocks.push(block);
+                this.pendingTransactions = [];
+                
+                const minerWallet = this.wallets.get(wallet);
+                if(minerWallet) {
+                    minerWallet.balance += totalReward;
+                    if (web3Bonus > 0) {
+                        addChatMessage(`⚡ Web3 Enhanced Mining! +${web3Bonus} bonus CatCoin`, 'Blockchain');
+                    }
+                }
+                
+                return block;
+            }
+
+            generateBlockHash(timestamp, miner) {
+                // Simple hash simulation using timestamp and miner
+                const data = timestamp.toString() + miner;
+                let hash = 0;
+                for (let i = 0; i < data.length; i++) {
+                    const char = data.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash; // Convert to 32-bit integer
+                }
+                return Math.abs(hash).toString(36).padStart(8, '0');
+            }
+
+            createTransaction(from, to, amount) {
+                const fromWallet = this.wallets.get(from);
+                const toWallet = this.wallets.get(to);
+                
+                if(!fromWallet || !toWallet || fromWallet.balance < amount) return false;
+                
+                const txFee = fromWallet.isWeb3 ? Math.floor(amount * 0.01) : Math.floor(amount * 0.02); // Lower fees for Web3 users
+                const netAmount = amount - txFee;
+                
+                this.pendingTransactions.push({
+                    from, to, amount: netAmount, fee: txFee, 
+                    timestamp: Date.now(),
+                    web3Enhanced: fromWallet.isWeb3 || toWallet.isWeb3
+                });
+                
+                fromWallet.balance -= amount;
+                toWallet.balance += netAmount;
+                return true;
+            }
+
+            stakeCatCoin(wallet, amount) {
+                const walletData = this.wallets.get(wallet);
+                if (!walletData || walletData.balance < amount) return false;
+                
+                walletData.balance -= amount;
+                if (!this.stakingPools.has(wallet)) {
+                    this.stakingPools.set(wallet, {staked: 0, rewards: 0, lastReward: Date.now()});
+                }
+                
+                const pool = this.stakingPools.get(wallet);
+                pool.staked += amount;
+                
+                addChatMessage(`🔒 Staked ${amount} CatCoin for mining rewards!`, 'DeFi');
+                return true;
+            }
+        }
+
+        // Game state
+        const game = {
+            canvas: document.getElementById('game'),
+            ctx: null,
+            width: 800,
+            height: 600,
+            cats: new Map(),
+            blocks: [],
+            blockchain: new CatCoin(),
+            ws: null,
+            myId: null,
+            myWallet: null,
+            connected: false,
+            miningNodes: [],
+            particles: [],
+            roomId: 'catcoin-' + Math.random().toString(36).substr(2, 6)
+        };
+
+        game.ctx = game.canvas.getContext('2d');
+
+        // Enhanced Cat entity with Web3 features
+        class BlockCat {
+            constructor(id, x, y) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.targetX = x;
+                this.targetY = y;
+                this.mining = false;
+                this.miningTarget = null;
+                this.energy = 100;
+                this.trail = [];
+                this.coins = 0;
+                this.isWeb3 = false;
+                this.stakingPower = 0;
+            }
+
+            update() {
+                this.x += (this.targetX - this.x) * 0.08;
+                this.y += (this.targetY - this.y) * 0.08;
+                
+                this.trail.push({x: this.x, y: this.y, alpha: 0.5});
+                if(this.trail.length > 12) this.trail.shift();
+                this.trail.forEach(t => t.alpha *= 0.9);
+
+                if(this.mining && this.miningTarget) {
+                    const dx = this.miningTarget.x - this.x;
+                    const dy = this.miningTarget.y - this.y;
+                    if(Math.sqrt(dx*dx + dy*dy) < 30) {
+                        this.performMining();
+                    }
+                }
+
+                if(this.energy < 100) this.energy += 0.2;
+                
+                // Web3 cats get energy bonus
+                if(this.isWeb3 && this.energy < 100) this.energy += 0.1;
+            }
+
+            performMining() {
+                const energyCost = this.isWeb3 ? 15 : 20; // Web3 cats mine more efficiently
+                if(this.energy >= energyCost) {
+                    this.energy -= energyCost;
+                    const block = game.blockchain.mine(this.id);
+                    if(block) {
+                        this.coins += block.reward;
+                        this.createCoinParticles(block.web3Enhanced);
+                        
+                        if(game.connected && this.id === game.myId) {
+                            game.ws.send(JSON.stringify({
+                                type: 'block_mined',
+                                block: block,
+                                miner: this.id,
+                                position: {x: this.x, y: this.y},
+                                web3Enhanced: block.web3Enhanced
+                            }));
+                        }
+                    }
+                }
+            }
+
+            createCoinParticles(web3Enhanced = false) {
+                const particleCount = web3Enhanced ? 10 : 6;
+                const color = web3Enhanced ? '#8a2be2' : '#ffaa00';
+                
+                for(let i = 0; i < particleCount; i++) {
+                    game.particles.push({
+                        x: this.x,
+                        y: this.y,
+                        vx: (Math.random() - 0.5) * 6,
+                        vy: (Math.random() - 0.5) * 6,
+                        life: web3Enhanced ? 90 : 60,
+                        type: web3Enhanced ? 'web3' : 'coin',
+                        color: color
+                    });
+                }
+            }
+
+            startMining(target) {
+                this.mining = true;
+                this.miningTarget = target;
+                this.targetX = target.x;
+                this.targetY = target.y;
+            }
+
+            draw(ctx) {
+                this.trail.forEach(t => {
+                    ctx.globalAlpha = t.alpha * 0.3;
+                    ctx.fillStyle = this.isWeb3 ? '#8a2be2' : '#00ff41';
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1;
+
+                ctx.fillStyle = this.id === game.myId ? '#000' : '#111';
+                ctx.fillRect(this.x-8, this.y-6, 16, 12);
+                
+                ctx.fillStyle = this.isWeb3 ? '#8a2be2' : '#00ff41';
+                ctx.fillRect(this.x-5, this.y-3, 2, 2);
+                ctx.fillRect(this.x+3, this.y-3, 2, 2);
+                
+                ctx.fillStyle = this.id === game.myId ? '#000' : '#111';
+                ctx.fillRect(this.x-8, this.y-12, 6, 6);
+                ctx.fillRect(this.x+2, this.y-12, 6, 6);
+                
+                if(this.mining) {
+                    ctx.strokeStyle = this.isWeb3 ? '#8a2be2' : '#ffaa00';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                if(this.isWeb3) {
+                    ctx.fillStyle = '#8a2be2';
+                    ctx.font = '8px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('W3', this.x, this.y - 18);
+                }
+
+                const barWidth = 20;
+                const barHeight = 3;
+                ctx.fillStyle = '#003300';
+                ctx.fillRect(this.x - barWidth/2, this.y + 12, barWidth, barHeight);
+                ctx.fillStyle = this.isWeb3 ? '#8a2be2' : '#00ff41';
+                ctx.fillRect(this.x - barWidth/2, this.y + 12, (barWidth * this.energy) / 100, barHeight);
+            }
+        }
+
+        function generateNetwork() {
+            game.miningNodes = [];
+            const nodeCount = 8;
+            
+            for(let i = 0; i < nodeCount; i++) {
+                const angle = (i / nodeCount) * Math.PI * 2;
+                const radius = 200;
+                game.miningNodes.push({
+                    id: i,
+                    x: game.width/2 + Math.cos(angle) * radius,
+                    y: game.height/2 + Math.sin(angle) * radius,
+                    difficulty: Math.floor(Math.random() * 3) + 1,
+                    active: false,
+                    miners: [],
+                    web3Bonus: Math.random() > 0.7 // Some nodes give Web3 bonuses
+                });
+            }
+        }
+
+        // WebSocket connection using js13kGames official relay
+        function connectToNetwork() {
+            try {
+                // NOTE: Replace 'YOUR_RELAY_URL_HERE' with actual relay URL from js13kGames
+                // Get the real URL from: js13kGames Discord or competition organizers
+                // This is a placeholder - contestants need to get the actual URL
+                const RELAY_URL = 'YOUR_RELAY_URL_HERE'; // TODO: Get from js13kGames organizers
+                
+                if (RELAY_URL === 'YOUR_RELAY_URL_HERE') {
+                    // Fallback to offline mode for demo purposes
+                    throw new Error('Need actual relay URL from js13kGames');
+                }
+                
+                // Using PartySocket (provided by js13kGames, doesn't count toward size limit)
+                game.ws = new PartySocket({
+                    host: RELAY_URL,
+                    room: game.roomId
+                });
+                
+                game.ws.onopen = () => {
+                    game.connected = true;
+                    updateStatus();
+                    addChatMessage(`🌐 Connected to CatCoin Network (Room: ${game.roomId})`, 'System');
+                };
+
+                game.ws.onmessage = (event) => {
+                    const msg = event.data;
+                    
+                    if(msg[0] === '@') {
+                        game.myId = msg.slice(1);
+                        if (!game.myWallet) {
+                            game.myWallet = userAccount ? 
+                                game.blockchain.createWeb3Wallet(userAccount) : 
+                                game.blockchain.createWallet();
+                        }
+                        updateWallet();
+                        
+                        const myCat = new BlockCat(game.myId, game.width/2, game.height/2);
+                        if (userAccount) {
+                            myCat.isWeb3 = true;
+                        }
+                        game.cats.set(game.myId, myCat);
+                        return;
+                    }
+                    
+                    if(msg[0] === '+') {
+                        const playerId = msg.slice(1);
+                        addChatMessage(`Player ${playerId.substr(0,6)} joined`, 'System');
+                        updatePlayerCount();
+                        return;
+                    }
+                    
+                    if(msg[0] === '-') {
+                        const playerId = msg.slice(1);
+                        game.cats.delete(playerId);
+                        addChatMessage(`Player ${playerId.substr(0,6)} left`, 'System');
+                        updatePlayerCount();
+                        return;
+                    }
+
+                    try {
+                        const data = JSON.parse(msg);
+                        handleNetworkMessage(data);
+                    } catch(e) {
+                        addChatMessage(msg, 'Chat');
+                    }
+                };
+
+                game.ws.onclose = () => {
+                    game.connected = false;
+                    updateStatus();
+                    addChatMessage('❌ Disconnected from network', 'System');
+                };
+
+                game.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    addChatMessage('⚠️ Connection error, retrying...', 'System');
+                };
+
+            } catch(e) {
+                console.warn('WebSocket connection failed, running offline:', e);
+                game.myId = 'offline_' + Math.random().toString(36).substr(2, 8);
+                game.myWallet = userAccount ? 
+                    game.blockchain.createWeb3Wallet(userAccount) : 
+                    game.blockchain.createWallet();
+                const myCat = new BlockCat(game.myId, game.width/2, game.height/2);
+                if (userAccount) myCat.isWeb3 = true;
+                game.cats.set(game.myId, myCat);
+                updateWallet();
+            }
+        }
+
+        function handleNetworkMessage(data) {
+            switch(data.type) {
+                case 'player_move':
+                    if(!game.cats.has(data.playerId)) {
+                        const cat = new BlockCat(data.playerId, data.x, data.y);
+                        cat.isWeb3 = data.isWeb3 || false;
+                        game.cats.set(data.playerId, cat);
+                    } else {
+                        const cat = game.cats.get(data.playerId);
+                        cat.targetX = data.x;
+                        cat.targetY = data.y;
+                        cat.isWeb3 = data.isWeb3 || false;
+                        if(data.mining) cat.startMining(data.miningTarget);
+                    }
+                    break;
+                    
+                case 'block_mined':
+                    game.blockchain.blocks.push(data.block);
+                    const prefix = data.web3Enhanced ? '⚡' : '⛏️';
+                    addChatMessage(`${prefix} Block #${data.block.id} mined by ${data.miner.substr(0,6)}!`, 'Network');
+                    updateBlockCount();
+                    break;
+                    
+                case 'transaction':
+                    const success = game.blockchain.createTransaction(data.from, data.to, data.amount);
+                    if(success) {
+                        addChatMessage(`💰 ${data.amount} CatCoin: ${data.from.substr(0,4)}→${data.to.substr(0,4)}`, 'Blockchain');
+                        updateWallet();
+                    }
+                    break;
+                    
+                case 'chat':
+                    addChatMessage(data.message, data.from.substr(0,6));
+                    break;
+            }
+        }
+
+        function updateStatus() {
+            document.getElementById('status').textContent = game.connected ? 'ONLINE' : 'OFFLINE';
+            document.getElementById('status').className = game.connected ? 'online' : 'offline';
+        }
+
+        function updatePlayerCount() {
+            document.getElementById('players').textContent = game.cats.size;
+        }
+
+        function updateBlockCount() {
+            document.getElementById('block').textContent = game.blockchain.blocks.length;
+        }
+
+        function updateWallet() {
+            if(game.myWallet) {
+                const wallet = game.blockchain.wallets.get(game.myWallet);
+                const balance = wallet ? wallet.balance : 0;
+                document.getElementById('coins').textContent = balance;
+                document.getElementById('address').textContent = game.myWallet;
+                console.log(`Wallet updated: ${balance} CatCoin`); // Debug log
+            }
+        }
+
+        function addChatMessage(msg, from = 'System') {
+            const chatDiv = document.getElementById('chat');
+            const div = document.createElement('div');
+            const time = new Date().toLocaleTimeString().slice(0,5);
+            const color = from === 'Web3' ? '#8a2be2' : from === 'Blockchain' ? '#ffaa00' : '#00aa00';
+            div.innerHTML = `<span style="color:#666">${time}</span> <span style="color:${color}">[${from}]</span> ${msg}`;
+            chatDiv.appendChild(div);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        game.canvas.addEventListener('click', (e) => {
+            const rect = game.canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const myCat = game.cats.get(game.myId);
+            if(!myCat) return;
+            
+            const clickedNode = game.miningNodes.find(node => {
+                const dx = x - node.x;
+                const dy = y - node.y;
+                return Math.sqrt(dx*dx + dy*dy) < 25;
+            });
+            
+            if(clickedNode) {
+                myCat.startMining(clickedNode);
+            } else {
+                myCat.targetX = x;
+                myCat.targetY = y;
+                myCat.mining = false;
+            }
+            
+            if(game.connected) {
+                game.ws.send(JSON.stringify({
+                    type: 'player_move',
+                    playerId: game.myId,
+                    x: myCat.targetX,
+                    y: myCat.targetY,
+                    mining: myCat.mining,
+                    miningTarget: myCat.miningTarget,
+                    isWeb3: myCat.isWeb3
+                }));
+            }
+        });
+
+        document.getElementById('input').addEventListener('keyup', (e) => {
+            if(e.key === 'Enter' && e.target.value.trim()) {
+                const msg = e.target.value.trim();
+                
+                if(msg.startsWith('/trade ')) {
+                    const parts = msg.split(' ');
+                    if(parts.length >= 3) {
+                        const amount = parseInt(parts[1]);
+                        const target = parts[2];
+                        
+                        if(game.connected) {
+                            game.ws.send(JSON.stringify({
+                                type: 'transaction',
+                                from: game.myWallet,
+                                to: target,
+                                amount: amount
+                            }));
+                        }
+                    }
+                } else if(msg.startsWith('/stake ')) {
+                    const amount = parseInt(msg.split(' ')[1]);
+                    if(amount && game.blockchain.stakeCatCoin(game.myWallet, amount)) {
+                        updateWallet();
+                    }
+                } else if(msg.startsWith('/mint ') && userAccount) {
+                    // Web3 exclusive feature - mint CatCoin based on ETH balance
+                    const amount = Math.min(parseInt(msg.split(' ')[1]), Math.floor(ethBalance * 1000));
+                    if(amount > 0) {
+                        const wallet = game.blockchain.wallets.get(game.myWallet);
+                        if(wallet) {
+                            wallet.balance += amount;
+                            addChatMessage(`🦊 Minted ${amount} CatCoin using Web3 power!`, 'Web3');
+                            updateWallet();
+                        }
+                    }
+                } else {
+                    if(game.connected) {
+                        game.ws.send(JSON.stringify({
+                            type: 'chat',
+                            message: msg,
+                            from: game.myId
+                        }));
+                    }
+                    addChatMessage(msg, 'You');
+                }
+                
+                e.target.value = '';
+            }
+        });
+
+        function render() {
+            const ctx = game.ctx;
+            
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, game.width, game.height);
+            
+            ctx.strokeStyle = '#001100';
+            ctx.lineWidth = 1;
+            for(let i = 0; i < game.miningNodes.length; i++) {
+                for(let j = i + 1; j < game.miningNodes.length; j++) {
+                    const from = game.miningNodes[i];
+                    const to = game.miningNodes[j];
+                    const distance = Math.sqrt((to.x-from.x)**2 + (to.y-from.y)**2);
+                    
+                    if(distance < 300) {
+                        ctx.setLineDash([2, 2]);
+                        ctx.beginPath();
+                        ctx.moveTo(from.x, from.y);
+                        ctx.lineTo(to.x, to.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.setLineDash([]);
+            
+            game.miningNodes.forEach((node, i) => {
+                const minersCount = Array.from(game.cats.values()).filter(cat => 
+                    cat.miningTarget && cat.miningTarget.id === node.id
+                ).length;
+                
+                ctx.fillStyle = minersCount > 0 ? '#004400' : '#002200';
+                ctx.strokeStyle = node.web3Bonus ? '#8a2be2' : '#00ff41';
+                ctx.lineWidth = node.web3Bonus ? 2 : 1;
+                
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                
+                // Node info
+                ctx.fillStyle = node.web3Bonus ? '#8a2be2' : '#00ff41';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`⛏${node.difficulty}`, node.x, node.y);
+                
+                if(node.web3Bonus) {
+                    ctx.fillText('W3', node.x, node.y - 12);
+                }
+                
+                if(minersCount > 0) {
+                    ctx.fillText(`${minersCount}`, node.x, node.y + 12);
+                }
+            });
+            
+            // Draw particles
+            game.particles = game.particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                p.vx *= 0.98; // Slow down over time
+                p.vy *= 0.98;
+                
+                ctx.globalAlpha = p.life / (p.type === 'web3' ? 90 : 60);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.type === 'web3' ? 3 : 2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                return p.life > 0;
+            });
+            ctx.globalAlpha = 1;
+            
+            // Draw cats
+            game.cats.forEach(cat => cat.draw(ctx));
+            
+            // Draw network stats overlay
+            if (game.blockchain.blocks.length > 0) {
+                ctx.fillStyle = 'rgba(0,20,0,0.8)';
+                ctx.fillRect(game.width - 150, game.height - 80, 140, 70);
+                ctx.strokeStyle = '#003300';
+                ctx.strokeRect(game.width - 150, game.height - 80, 140, 70);
+                
+                ctx.fillStyle = '#00ff41';
+                ctx.font = '10px monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText('Network Stats:', game.width - 145, game.height - 65);
+                ctx.fillText(`Total Blocks: ${game.blockchain.blocks.length}`, game.width - 145, game.height - 50);
+                ctx.fillText(`Pending TX: ${game.blockchain.pendingTransactions.length}`, game.width - 145, game.height - 35);
+                ctx.fillText(`Active Miners: ${game.cats.size}`, game.width - 145, game.height - 20);
+            }
+        }
+
+        function gameLoop() {
+            game.cats.forEach(cat => cat.update());
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Auto-staking rewards for Web3 users
+        setInterval(() => {
+            if (game.blockchain.stakingPools.size > 0) {
+                game.blockchain.stakingPools.forEach((pool, wallet) => {
+                    const timeSinceLastReward = Date.now() - pool.lastReward;
+                    if (timeSinceLastReward > 30000) { // Every 30 seconds
+                        const reward = Math.floor(pool.staked * 0.05); // 5% reward
+                        if (reward > 0) {
+                            const walletData = game.blockchain.wallets.get(wallet);
+                            if (walletData) {
+                                walletData.balance += reward;
+                                pool.rewards += reward;
+                                pool.lastReward = Date.now();
+                                
+                                if (wallet === game.myWallet) {
+                                    addChatMessage(`💎 Staking reward: +${reward} CatCoin`, 'DeFi');
+                                    updateWallet();
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }, 30000);
+
+        // Auto-mining demonstration
+        setInterval(() => {
+            const myCat = game.cats.get(game.myId);
+            if(myCat && !myCat.mining && Math.random() < 0.3) {
+                const availableNodes = game.miningNodes.filter(node => {
+                    const minersCount = Array.from(game.cats.values()).filter(cat => 
+                        cat.miningTarget && cat.miningTarget.id === node.id
+                    ).length;
+                    return minersCount < 2; // Avoid overcrowded nodes
+                });
+                
+                if (availableNodes.length > 0) {
+                    const randomNode = availableNodes[Math.floor(Math.random() * availableNodes.length)];
+                    myCat.startMining(randomNode);
+                }
+            }
+        }, 8000);
+
+        // Periodic Web3 balance update
+        setInterval(async () => {
+            if (userAccount && web3Provider) {
+                try {
+                    const balance = await web3Provider.request({
+                        method: 'eth_getBalance',
+                        params: [userAccount, 'latest']
+                    });
+                    const newBalance = parseInt(balance, 16) / Math.pow(10, 18);
+                    if (Math.abs(newBalance - ethBalance) > 0.0001) {
+                        ethBalance = newBalance;
+                        updateWeb3UI();
+                        
+                        // Give bonus CatCoin for ETH transactions
+                        const wallet = game.blockchain.wallets.get(game.myWallet);
+                        if (wallet && newBalance < ethBalance) {
+                            const bonus = Math.floor((ethBalance - newBalance) * 10000); // Bonus based on ETH spent
+                            wallet.balance += bonus;
+                            addChatMessage(`⚡ Transaction detected! +${bonus} CatCoin bonus`, 'Web3');
+                            updateWallet();
+                        }
+                    }
+                } catch (error) {
+                    console.log('Failed to update ETH balance:', error);
+                }
+            }
+        }, 15000);
+
+        // Initialize everything - ALWAYS WORKS OFFLINE FIRST
+        generateNetwork();
+        updateWeb3UI();
+        
+        // Create offline player immediately (no network needed)
+        game.myId = 'player_' + Math.random().toString(36).substr(2, 8);
+        game.myWallet = game.blockchain.createWallet();
+        
+        const myCat = new BlockCat(game.myId, game.width/2, game.height/2);
+        game.cats.set(game.myId, myCat);
+        updateWallet();
+        
+        // Add some AI cats for offline demonstration
+        for(let i = 0; i < 3; i++) {
+            const aiId = 'ai_' + i;
+            const aiWallet = game.blockchain.createWallet();
+            const angle = (i / 3) * Math.PI * 2;
+            const radius = 100;
+            const aiCat = new BlockCat(aiId, 
+                game.width/2 + Math.cos(angle) * radius,
+                game.height/2 + Math.sin(angle) * radius
+            );
+            game.cats.set(aiId, aiCat);
+        }
+        updatePlayerCount();
+        
+        // Try to auto-connect MetaMask if available (optional enhancement)
+        if (typeof window.ethereum !== 'undefined') {
+            window.ethereum.request({ method: 'eth_accounts' })
+                .then(accounts => {
+                    if (accounts.length > 0) {
+                        userAccount = accounts[0];
+                        web3Provider = window.ethereum;
+                        
+                        // Upgrade to Web3 wallet (optional enhancement)
+                        game.myWallet = game.blockchain.createWeb3Wallet(userAccount);
+                        const myCat = game.cats.get(game.myId);
+                        if (myCat) myCat.isWeb3 = true;
+                        
+                        window.ethereum.request({
+                            method: 'eth_getBalance',
+                            params: [userAccount, 'latest']
+                        }).then(balance => {
+                            ethBalance = parseInt(balance, 16) / Math.pow(10, 18);
+                            updateWeb3UI();
+                            updateWallet();
+                            addChatMessage(`🦊 MetaMask auto-connected: ${userAccount.slice(0,8)}...`, 'Web3');
+                        });
+                    }
+                })
+                .catch(console.error);
+        }
+        
+        // Try to connect to network (optional enhancement)
+        connectToNetwork();
+        
+        // Start game loop (works offline)
+        gameLoop();
+        
+        addChatMessage('🐱 Welcome to CatCoin Network - Mining Simulator!', 'System');
+        addChatMessage('🎯 OFFLINE MODE: Click mining nodes to send your cat mining', 'System');
+        addChatMessage('⛏️ Each node has different difficulty - higher = more rewards', 'System');
+        addChatMessage('💰 Watch your CatCoin balance grow as you mine blocks!', 'System');
+        addChatMessage('🦊 Connect MetaMask for Web3 bonuses (optional)', 'System');
+        
+        // AI behavior for offline demo
+        setInterval(() => {
+            game.cats.forEach((cat, id) => {
+                if (id !== game.myId && id.startsWith('ai_')) {
+                    if (!cat.mining && Math.random() < 0.4) {
+                        const randomNode = game.miningNodes[Math.floor(Math.random() * game.miningNodes.length)];
+                        cat.startMining(randomNode);
+                        
+                        // Simulate AI mining success
+                        setTimeout(() => {
+                            const aiWallet = 'ai_wallet_' + id.split('_')[1];
+                            if (!game.blockchain.wallets.has(aiWallet)) {
+                                game.blockchain.wallets.set(aiWallet, {balance: 50, address: aiWallet});
+                            }
+                            
+                            const block = game.blockchain.mine(aiWallet);
+                            if (block) {
+                                addChatMessage(`🤖 AI Cat ${id} mined block #${block.id}`, 'Network');
+                                updateBlockCount();
+                            }
+                        }, 2000 + Math.random() * 3000);
+                    }
+                }
+            });
+        }, 5000);
+    </script>
+</body>
+</html>
