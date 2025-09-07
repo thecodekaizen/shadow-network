@@ -1,616 +1,439 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>CatCoin Network</title>
+  <head>
+    <meta charset="UTF-8" />
+    <title>CatCoin Network — Multiplayer</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{background:#0a0a0a;color:#00ff41;font:11px monospace;overflow:hidden}
-        canvas{display:block;margin:0 auto;border:1px solid #003300;background:radial-gradient(circle,#001100,#000000)}
-        #ui{position:fixed;top:8px;left:8px;z-index:100;background:rgba(0,20,0,0.9);padding:8px;border:1px solid #003300;border-radius:4px}
-        .stat{margin:2px 0;display:flex;align-items:center;gap:6px}
-        .online{color:#00ff41}
-        .offline{color:#ff4444}
-        #wallet{position:fixed;top:8px;right:8px;background:rgba(0,20,0,0.9);padding:8px;border:1px solid #003300;border-radius:4px;min-width:200px}
-        .coin{color:#ffaa00;font-weight:bold}
-        #instructions{position:fixed;bottom:8px;right:8px;background:rgba(0,20,0,0.9);padding:8px;border:1px solid #003300;border-radius:4px;max-width:300px;font-size:9px}
-        #level-complete{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,50,0,0.95);padding:20px;border:2px solid #00ff41;border-radius:8px;text-align:center;display:none}
-        .mining{animation:pulse 1s infinite}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-        .node{stroke:#00ff41;stroke-width:2;fill:rgba(0,255,65,0.1)}
-        .node.active{fill:rgba(0,255,65,0.3);stroke-width:3}
-        .node.target{stroke:#ffaa00;stroke-width:4;fill:rgba(255,170,0,0.2)}
-        .node.completed{fill:rgba(0,255,65,0.5)}
-        .link{stroke:#003300;stroke-width:2}
-        .link.active{stroke:#00ff41;stroke-width:3;animation:flow 1s infinite}
-        @keyframes flow{0%{stroke-dashoffset:0}100%{stroke-dashoffset:10}}
-        .cat{fill:#000;stroke:#00ff41;stroke-width:2}
-        .shadow{fill:rgba(0,255,65,0.1)}
-        .coin-particle{fill:#ffaa00}
-        button{background:#1a472a;border:1px solid #00ff41;color:#00ff41;padding:8px 16px;margin:5px;border-radius:4px;cursor:pointer;font:11px monospace}
-        button:hover{background:#2a573a}
+      * { margin:0; padding:0; box-sizing:border-box }
+      body { background:#0a0a0a; color:#00ff41; font:11px monospace; overflow:hidden }
+      #container{display:flex;gap:8px;padding:8px}
+      #left{flex:1}
+      canvas{display:block;margin:0 auto;border:1px solid #003300;background:radial-gradient(circle,#001100,#000000)}
+      #ui{position:fixed;top:8px;left:8px;z-index:100;background:rgba(0,20,0,0.95);padding:8px;border:1px solid #003300;border-radius:4px}
+      .stat{margin:2px 0;display:flex;align-items:center;gap:6px}
+      #wallet{position:fixed;top:8px;right:8px;background:rgba(0,20,0,0.95);padding:8px;border:1px solid #003300;border-radius:4px;min-width:220px}
+      #instructions{position:fixed;bottom:8px;right:8px;background:rgba(0,20,0,0.95);padding:8px;border:1px solid #003300;border-radius:4px;max-width:330px;font-size:9px}
+      #scoreboard{position:fixed;top:120px;right:8px;background:rgba(0,20,0,0.95);padding:8px;border:1px solid #003300;border-radius:4px;min-width:220px;max-height:60vh;overflow:auto}
+      #level-complete{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,50,0,0.95);padding:20px;border:2px solid #00ff41;border-radius:8px;text-align:center;display:none}
+      button{background:#1a472a;border:1px solid #00ff41;color:#00ff41;padding:8px 16px;margin:5px;border-radius:4px;cursor:pointer;font:11px monospace}
+      button:hover{background:#2a573a}
+      input,select{background:#071007;border:1px solid #003300;color:#00ff41;padding:6px;border-radius:4px;font:11px monospace}
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div id="ui">
-        <div class="stat">🐱 CatCoin Network</div>
-        <div class="stat">🎯 Level: <span id="level">1</span></div>
-        <div class="stat">⏱️ Time: <span id="timer">0</span></div>
-        <div class="stat mining">⛏️ <span id="mining-status">Ready</span></div>
+      <div class="stat">🐱 CatCoin Network</div>
+      <div class="stat">🎯 Level: <span id="level">1</span></div>
+      <div class="stat">⏱️ Time: <span id="timer">0</span></div>
+      <div class="stat mining">⛏️ <span id="mining-status">Ready</span></div>
+      <div class="stat">🌐 Mode: <span id="mode">Offline</span></div>
+      <div style="margin-top:6px">
+        <button id="connectBtn">Connect (Multiplayer)</button>
+        <button id="newGameBtn">New Offline Game</button>
+      </div>
     </div>
-    
+
     <div id="wallet">
-        <div class="coin">💰 CatCoin: <span id="coins">0</span></div>
-        <div style="font-size:9px;color:#666">Blocks Mined: <span id="blocks">0</span></div>
-        <div style="font-size:9px;color:#666">Network Hash: <span id="hash">0</span></div>
+      <div class="coin">💰 CatCoin: <span id="coins">0</span></div>
+      <div style="font-size:9px;color:#666">Blocks Mined: <span id="blocks">0</span></div>
+      <div style="font-size:9px;color:#666">Network Hash: <span id="hash">0</span></div>
+      <div style="margin-top:8px">
+        <button id="connectWallet">Connect MetaMask</button>
+        <button id="addToken">Add CatCoin Token</button>
+      </div>
+      <div style="font-size:9px;color:#666;margin-top:6px">Best Time (local): <span id="bestTime">—</span></div>
     </div>
-    
+
     <div id="instructions">
-        <div>📋 OBJECTIVES:</div>
-        <div>• Move cats to mine all nodes</div>
-        <div>• Activate network connections</div>
-        <div>• Reach target node together</div>
-        <div>• Unlock blockchain rewards</div>
-        <br>
-        <div>🎮 CONTROLS:</div>
-        <div>• Click adjacent nodes to move</div>
-        <div>• Mining takes time & energy</div>
-        <div>• Green = mined, Yellow = target</div>
+      <div>📋 OBJECTIVES:</div>
+      <div>• Move cats to mine all nodes</div>
+      <div>• Activate network connections</div>
+      <div>• Reach target node together</div>
+      <div>• Unlock blockchain rewards</div>
+      <br>
+      <div>🎮 CONTROLS:</div>
+      <div>• Click adjacent nodes to move</div>
+      <div>• Mining takes time & energy</div>
+      <div>• Green = mined, Yellow = target</div>
+      <br>
+      <div>⚠️ Multiplayer: fastest player to mine all target nodes wins. A scoreboard will show player times.</div>
     </div>
-    
-    <canvas id="game" width="800" height="600"></canvas>
-    
+
+    <div id="scoreboard">
+      <div style="font-weight:bold;margin-bottom:6px">🏆 Scoreboard</div>
+      <div id="playersList">No players connected</div>
+    </div>
+
+    <div id="left">
+      <canvas id="game" width="1000" height="700"></canvas>
+    </div>
+
     <div id="level-complete">
-        <div style="font-size:16px;margin-bottom:10px">🎉 LEVEL COMPLETE!</div>
-        <div>Network Successfully Mined!</div>
-        <div style="margin:10px 0">
-            <span>Coins Earned: </span><span class="coin" id="level-coins">0</span>
-        </div>
-        <button onclick="nextLevel()">Next Level</button>
-        <button onclick="resetGame()">Restart</button>
+      <div style="font-size:16px;margin-bottom:10px">🎉 LEVEL COMPLETE!</div>
+      <div>Network Successfully Mined!</div>
+      <div style="margin:10px 0">
+        <span>Coins Earned: </span><span class="coin" id="level-coins">0</span>
+      </div>
+      <button onclick="nextLevel()">Next Level</button>
+      <button onclick="resetGame()">Restart</button>
     </div>
 
     <script>
-        // Game state
-        const game = {
-            canvas: document.getElementById('game'),
-            ctx: null,
-            width: 800,
-            height: 600,
-            nodes: [],
-            links: [],
-            cats: [],
-            level: 1,
-            coins: 0,
-            blocks: 0,
-            startTime: Date.now(),
-            levelComplete: false,
-            particles: [],
-            targetNodes: [],
-            completedNodes: new Set(),
-            networkHash: 0
-        };
+      // -----------------------------
+      // Configuration & notes
+      // -----------------------------
+      const WS_SERVER = "wss://relay.js13kgames.com/shadow-network"; // set to your server or '' for offline
+      const CATCOIN_TOKEN_ADDRESS = ""; // set to your testnet token address
+      const CATCOIN_TOKEN_DECIMALS = 18;
+      const CATCOIN_TOKEN_SYMBOL = "CAT";
 
-        game.ctx = game.canvas.getContext('2d');
+      // Completion mode: 'all' (full network) or 'targets' (only target nodes)
+      const COMPLETE_MODE = 'all'; // <<-- set here
 
-        // Level configurations
-        const levels = [
-            {nodes: 6, cats: 1, targets: 1, time: 60, reward: 100},
-            {nodes: 8, cats: 2, targets: 2, time: 90, reward: 200},
-            {nodes: 10, cats: 2, targets: 3, time: 120, reward: 350},
-            {nodes: 12, cats: 3, targets: 4, time: 150, reward: 500},
-            {nodes: 14, cats: 3, targets: 5, time: 180, reward: 750}
-        ];
+      // -----------------------------
+      // Game state
+      // -----------------------------
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const game = {
+        width: canvas.width = 1000,
+        height: canvas.height = 700,
+        nodes: [],
+        links: [],
+        cats: [],
+        level: 1,
+        coins: 0,
+        blocks: 0,
+        startTime: Date.now(),
+        levelComplete: false,
+        particles: [],
+        targetNodes: [],
+        completedNodes: new Set(),
+        networkHash: 0,
+        players: {},
+        clientId: null,
+        ws: null,
+        mode: 'offline'
+      };
 
-        // Generate network topology for current level
-        function generateLevel(level) {
-            const config = levels[Math.min(level - 1, levels.length - 1)];
-            game.nodes = [];
-            game.links = [];
-            game.cats = [];
-            game.targetNodes = [];
-            game.completedNodes.clear();
-            game.levelComplete = false;
-            game.startTime = Date.now();
-            
-            // Create nodes in organized pattern
-            const nodeCount = config.nodes;
-            const centerX = game.width / 2;
-            const centerY = game.height / 2;
-            
-            // Central hub node
-            game.nodes.push({
-                id: 0,
-                x: centerX,
-                y: centerY,
-                active: false,
-                mined: false,
-                mining: false,
-                energy: Math.floor(Math.random() * 3) + 2,
-                maxEnergy: Math.floor(Math.random() * 3) + 2,
-                difficulty: 1
-            });
-            
-            // Ring of nodes around center
-            for(let i = 1; i < nodeCount; i++) {
-                const ring = Math.floor((i - 1) / 6) + 1;
-                const nodesInRing = Math.min(6, nodeCount - 1 - (ring - 1) * 6);
-                const angleStep = (Math.PI * 2) / nodesInRing;
-                const nodeInRing = (i - 1) % 6;
-                const angle = angleStep * nodeInRing;
-                const radius = 120 + ring * 80;
-                
-                game.nodes.push({
-                    id: i,
-                    x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 30,
-                    y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 30,
-                    active: false,
-                    mined: false,
-                    mining: false,
-                    energy: Math.floor(Math.random() * 4) + 1,
-                    maxEnergy: Math.floor(Math.random() * 4) + 1,
-                    difficulty: ring
-                });
-            }
+      const levels = [
+        {nodes: 8, cats: 1, targets: 1, time: 60, reward: 100},
+        {nodes: 12, cats: 2, targets: 2, time: 90, reward: 200},
+        {nodes: 16, cats: 2, targets: 3, time: 120, reward: 350},
+        {nodes: 20, cats: 3, targets: 4, time: 150, reward: 500},
+        {nodes: 24, cats: 3, targets: 5, time: 180, reward: 750}
+      ];
 
-            // Create strategic links
-            for(let i = 0; i < nodeCount; i++) {
-                // Connect to center
-                if(i > 0) {
-                    game.links.push({from: 0, to: i, active: false});
-                }
-                
-                // Connect to nearby nodes
-                for(let j = i + 1; j < nodeCount; j++) {
-                    const dx = game.nodes[i].x - game.nodes[j].x;
-                    const dy = game.nodes[i].y - game.nodes[j].y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if(distance < 180 && Math.random() > 0.4) {
-                        if(!game.links.find(l => (l.from === i && l.to === j) || (l.from === j && l.to === i))) {
-                            game.links.push({from: i, to: j, active: false});
-                        }
-                    }
-                }
-            }
-            
-            // Select target nodes (nodes that must be reached)
-            const targetCount = config.targets;
-            const possibleTargets = game.nodes.slice(Math.max(1, nodeCount - targetCount - 2));
-            for(let i = 0; i < Math.min(targetCount, possibleTargets.length); i++) {
-                game.targetNodes.push(possibleTargets[i].id);
-            }
-            
-            // Create cats
-            for(let i = 0; i < config.cats; i++) {
-                game.cats.push(new NetworkCat(i, game.nodes[0].x, game.nodes[0].y));
-            }
+      // -----------------------------
+      // Local best utility
+      // -----------------------------
+      function getLocalBest(level) {
+        try { const key = `catcoin_best_l${level}`; const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e){return null}
+      }
+      function setLocalBest(level,obj) {
+        try { localStorage.setItem(`catcoin_best_l${level}`, JSON.stringify(obj)); } catch(e){}
+      }
+
+      // -----------------------------
+      // Network generation
+      // -----------------------------
+      function generateLevel(level){
+        const cfg = levels[Math.min(level-1, levels.length-1)];
+        game.nodes = []; game.links = []; game.cats = []; game.targetNodes = []; game.completedNodes = new Set(); game.particles = [];
+        game.startTime = Date.now(); game.levelComplete = false;
+
+        const nodeCount = cfg.nodes;
+        const cx = game.width/2, cy = game.height/2;
+
+        for(let i=0;i<nodeCount;i++){
+          const angle = (i/nodeCount)*Math.PI*2 + (Math.random()-0.5)*0.2;
+          const ring = 1 + Math.floor(i/8);
+          const radius = 100 + ring*70 + (Math.random()-0.5)*40;
+          game.nodes.push({id:i,x:cx+Math.cos(angle)*radius+(Math.random()-0.5)*40, y:cy+Math.sin(angle)*radius+(Math.random()-0.5)*40, mined:false, mining:false, energy:Math.floor(Math.random()*4)+1, maxEnergy:Math.floor(Math.random()*4)+1, difficulty:ring});
         }
 
-        // Enhanced Cat entity with mining mechanics
-        class NetworkCat {
-            constructor(id, x, y) {
-                this.id = id;
-                this.x = x;
-                this.y = y;
-                this.targetX = x;
-                this.targetY = y;
-                this.node = 0;
-                this.moving = false;
-                this.mining = false;
-                this.miningProgress = 0;
-                this.energy = 100;
-                this.maxEnergy = 100;
-                this.trail = [];
-                this.color = ['#000', '#111', '#222'][id] || '#000';
-            }
-
-            update() {
-                // Smooth movement
-                if(this.moving) {
-                    const dx = this.targetX - this.x;
-                    const dy = this.targetY - this.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if(distance > 3) {
-                        this.x += dx * 0.15;
-                        this.y += dy * 0.15;
-                    } else {
-                        this.x = this.targetX;
-                        this.y = this.targetY;
-                        this.moving = false;
-                        this.startMining();
-                    }
-                }
-
-                // Mining progress
-                if(this.mining) {
-                    const currentNode = game.nodes[this.node];
-                    if(currentNode && !currentNode.mined && this.energy > 0) {
-                        this.miningProgress += 1 + (this.energy / 100);
-                        this.energy = Math.max(0, this.energy - 0.5);
-                        
-                        const requiredProgress = currentNode.difficulty * 60;
-                        if(this.miningProgress >= requiredProgress) {
-                            this.completeMining();
-                        }
-                        
-                        // Create mining particles
-                        if(Math.random() < 0.3) {
-                            this.createMiningParticle();
-                        }
-                    }
-                }
-
-                // Energy regeneration when not mining
-                if(!this.mining && this.energy < this.maxEnergy) {
-                    this.energy += 0.3;
-                }
-
-                // Trail effect
-                this.trail.push({x: this.x, y: this.y, alpha: 1});
-                if(this.trail.length > 8) this.trail.shift();
-                this.trail.forEach(t => t.alpha *= 0.85);
-            }
-
-            moveTo(nodeId) {
-                if(this.mining || this.moving) return false;
-                
-                // Check if move is valid (connected nodes)
-                const canMove = this.node === nodeId || game.links.some(l => 
-                    (l.from === this.node && l.to === nodeId) || 
-                    (l.to === this.node && l.from === nodeId)
-                );
-                
-                if(canMove && nodeId < game.nodes.length) {
-                    this.node = nodeId;
-                    this.targetX = game.nodes[nodeId].x;
-                    this.targetY = game.nodes[nodeId].y;
-                    this.moving = true;
-                    this.miningProgress = 0;
-                    return true;
-                }
-                return false;
-            }
-
-            startMining() {
-                const currentNode = game.nodes[this.node];
-                if(currentNode && !currentNode.mined) {
-                    this.mining = true;
-                    currentNode.mining = true;
-                    this.miningProgress = 0;
-                    updateMiningStatus('Mining Node ' + this.node);
-                }
-            }
-
-            completeMining() {
-                const currentNode = game.nodes[this.node];
-                if(currentNode) {
-                    currentNode.mined = true;
-                    currentNode.mining = false;
-                    currentNode.active = true;
-                    game.completedNodes.add(this.node);
-                    
-                    // Activate connected links
-                    game.links.forEach(link => {
-                        if((link.from === this.node || link.to === this.node) && 
-                           (game.nodes[link.from].mined && game.nodes[link.to].mined)) {
-                            link.active = true;
-                        }
-                    });
-                    
-                    // Reward calculation
-                    const baseReward = currentNode.difficulty * 20;
-                    const energyBonus = Math.floor(this.energy / 10) * 5;
-                    const totalReward = baseReward + energyBonus;
-                    
-                    game.coins += totalReward;
-                    game.blocks++;
-                    game.networkHash += currentNode.difficulty * 1000;
-                    
-                    // Create reward particles
-                    this.createRewardParticles(totalReward);
-                    
-                    updateUI();
-                    checkLevelComplete();
-                }
-                
-                this.mining = false;
-                updateMiningStatus('Ready');
-            }
-
-            createMiningParticle() {
-                game.particles.push({
-                    x: this.x + (Math.random() - 0.5) * 20,
-                    y: this.y + (Math.random() - 0.5) * 20,
-                    vx: (Math.random() - 0.5) * 2,
-                    vy: (Math.random() - 0.5) * 2 - 1,
-                    life: 30,
-                    type: 'mining',
-                    size: Math.random() * 3 + 1
-                });
-            }
-
-            createRewardParticles(reward) {
-                const particleCount = Math.min(reward / 10, 15);
-                for(let i = 0; i < particleCount; i++) {
-                    game.particles.push({
-                        x: this.x,
-                        y: this.y,
-                        vx: (Math.random() - 0.5) * 8,
-                        vy: (Math.random() - 0.5) * 8 - 2,
-                        life: 60,
-                        type: 'coin',
-                        size: Math.random() * 4 + 2
-                    });
-                }
-            }
-
-            draw(ctx) {
-                // Draw trail
-                this.trail.forEach(t => {
-                    ctx.globalAlpha = t.alpha * 0.4;
-                    ctx.fillStyle = '#00ff41';
-                    ctx.beginPath();
-                    ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
-                    ctx.fill();
-                });
-                ctx.globalAlpha = 1;
-
-                // Draw cat body
-                ctx.fillStyle = this.color;
-                ctx.fillRect(this.x - 8, this.y - 6, 16, 12);
-                
-                // Eyes
-                ctx.fillStyle = '#00ff41';
-                ctx.fillRect(this.x - 5, this.y - 3, 2, 2);
-                ctx.fillRect(this.x + 3, this.y - 3, 2, 2);
-                
-                // Ears
-                ctx.fillStyle = this.color;
-                ctx.fillRect(this.x - 8, this.y - 10, 5, 5);
-                ctx.fillRect(this.x + 3, this.y - 10, 5, 5);
-
-                // Mining indicator
-                if(this.mining) {
-                    ctx.strokeStyle = '#ffaa00';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([3, 3]);
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, 15, 0, (this.miningProgress / (game.nodes[this.node].difficulty * 60)) * Math.PI * 2);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
-
-                // Energy bar
-                const barWidth = 16;
-                const barHeight = 2;
-                ctx.fillStyle = '#330000';
-                ctx.fillRect(this.x - barWidth/2, this.y + 10, barWidth, barHeight);
-                ctx.fillStyle = this.energy > 30 ? '#00ff41' : '#ff4444';
-                ctx.fillRect(this.x - barWidth/2, this.y + 10, (barWidth * this.energy) / this.maxEnergy, barHeight);
-
-                // Cat ID
-                ctx.fillStyle = '#00ff41';
-                ctx.font = '8px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText(this.id.toString(), this.x, this.y - 15);
-            }
+        for(let i=0;i<nodeCount;i++){
+          for(let j=i+1;j<nodeCount;j++){
+            const dx = game.nodes[i].x - game.nodes[j].x;
+            const dy = game.nodes[i].y - game.nodes[j].y;
+            const d = Math.sqrt(dx*dx+dy*dy);
+            const p = Math.max(0, 0.9 - d/400) + (Math.random()*0.2 - 0.1);
+            if(Math.random() < p){ game.links.push({from:i,to:j,active:false}); }
+          }
         }
 
-        // Render game
-        function render() {
-            const ctx = game.ctx;
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, game.width, game.height);
+        ensureConnectedGraph();
 
-            // Draw network links
-            game.links.forEach(link => {
-                const from = game.nodes[link.from];
-                const to = game.nodes[link.to];
-                
-                ctx.strokeStyle = link.active ? '#00ff41' : '#003300';
-                ctx.lineWidth = link.active ? 3 : 2;
-                
-                if(link.active) {
-                    ctx.setLineDash([5, 5]);
-                    ctx.lineDashOffset = Date.now() / 100;
-                } else {
-                    ctx.setLineDash([]);
-                }
-                
-                ctx.beginPath();
-                ctx.moveTo(from.x, from.y);
-                ctx.lineTo(to.x, to.y);
-                ctx.stroke();
-            });
-            ctx.setLineDash([]);
+        const possible = game.nodes.map(n=>n.id);
+        shuffleArray(possible);
+        const targetCount = Math.min(cfg.targets, possible.length);
+        game.targetNodes = possible.slice(0, targetCount);
 
-            // Draw nodes
-            game.nodes.forEach((node, i) => {
-                let fillStyle, strokeStyle, lineWidth;
-                
-                if(game.targetNodes.includes(i)) {
-                    fillStyle = node.mined ? 'rgba(0,255,65,0.5)' : 'rgba(255,170,0,0.2)';
-                    strokeStyle = node.mined ? '#00ff41' : '#ffaa00';
-                    lineWidth = 4;
-                } else if(node.mined) {
-                    fillStyle = 'rgba(0,255,65,0.4)';
-                    strokeStyle = '#00ff41';
-                    lineWidth = 3;
-                } else if(node.mining) {
-                    fillStyle = 'rgba(255,170,0,0.3)';
-                    strokeStyle = '#ffaa00';
-                    lineWidth = 3;
-                } else {
-                    fillStyle = 'rgba(0,255,65,0.1)';
-                    strokeStyle = '#00ff41';
-                    lineWidth = 2;
-                }
-                
-                ctx.fillStyle = fillStyle;
-                ctx.strokeStyle = strokeStyle;
-                ctx.lineWidth = lineWidth;
-                
-                ctx.beginPath();
-                ctx.arc(node.x, node.y, 18, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
-                
-                // Node info
-                ctx.fillStyle = strokeStyle;
-                ctx.font = '10px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText(i.toString(), node.x, node.y - 2);
-                
-                // Difficulty indicator
-                ctx.font = '8px monospace';
-                ctx.fillText('D' + node.difficulty, node.x, node.y + 8);
-                
-                // Energy indicator
-                if(!node.mined) {
-                    ctx.fillStyle = '#666';
-                    ctx.fillText('E' + node.energy, node.x, node.y + 30);
-                }
-            });
+        for(let i=0;i<cfg.cats;i++){ game.cats.push(new NetworkCat(i, game.nodes[0].x, game.nodes[0].y)); }
+      }
 
-            // Draw particles
-            game.particles = game.particles.filter(p => {
-                p.x += p.vx;
-                p.y += p.vy;
-                p.vy += 0.1; // Gravity
-                p.vx *= 0.98;
-                p.vy *= 0.98;
-                p.life--;
-                
-                ctx.globalAlpha = p.life / (p.type === 'coin' ? 60 : 30);
-                ctx.fillStyle = p.type === 'coin' ? '#ffaa00' : '#00ff41';
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-                
-                return p.life > 0;
-            });
-            ctx.globalAlpha = 1;
+      function ensureConnectedGraph(){
+        const n = game.nodes.length;
+        const parent = Array.from({length:n}, (_,i)=>i);
+        function find(a){ return parent[a]===a ? a : (parent[a] = find(parent[a])); }
+        function union(a,b){ a=find(a); b=find(b); if(a!==b) parent[b]=a; }
+        game.links.forEach(l=>union(l.from,l.to));
+        for(let i=1;i<n;i++){ if(find(i)!==find(0)){ game.links.push({from:0,to:i,active:false}); union(0,i); } }
+      }
 
-            // Draw cats
-            game.cats.forEach(cat => cat.draw(ctx));
-            
-            // Draw level progress
-            const totalNodes = game.nodes.length;
-            const minedNodes = game.completedNodes.size;
-            const targetNodesMined = game.targetNodes.filter(id => game.completedNodes.has(id)).length;
-            
-            ctx.fillStyle = 'rgba(0,20,0,0.9)';
-            ctx.fillRect(10, game.height - 60, 200, 50);
-            ctx.strokeStyle = '#003300';
-            ctx.strokeRect(10, game.height - 60, 200, 50);
-            
-            ctx.fillStyle = '#00ff41';
-            ctx.font = '10px monospace';
-            ctx.textAlign = 'left';
-            ctx.fillText(`Nodes Mined: ${minedNodes}/${totalNodes}`, 15, game.height - 45);
-            ctx.fillText(`Targets: ${targetNodesMined}/${game.targetNodes.length}`, 15, game.height - 30);
-            ctx.fillText(`Network: ${Math.floor((minedNodes/totalNodes) * 100)}% Complete`, 15, game.height - 15);
-        }
+      function shuffleArray(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
 
-        // Input handling
-        game.canvas.addEventListener('click', (e) => {
-            const rect = game.canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            // Find clicked node
-            const clickedNode = game.nodes.findIndex(node => {
-                const dx = x - node.x;
-                const dy = y - node.y;
-                return Math.sqrt(dx * dx + dy * dy) < 25;
-            });
-            
-            if(clickedNode >= 0) {
-                // Move the cat with highest energy to clicked node
-                const availableCat = game.cats
-                    .filter(cat => !cat.moving && !cat.mining)
-                    .sort((a, b) => b.energy - a.energy)[0];
-                
-                if(availableCat) {
-                    availableCat.moveTo(clickedNode);
-                }
+      // -----------------------------
+      // NetworkCat
+      // -----------------------------
+      class NetworkCat {
+        constructor(id,x,y){ this.id=id;this.x=x;this.y=y;this.targetX=x;this.targetY=y;this.node=0;this.moving=false;this.mining=false;this.miningProgress=0;this.energy=100;this.maxEnergy=100;this.trail=[];this.color=['#000','#111','#222'][id]||'#000'; }
+        update(){
+          if(this.moving){
+            const dx=this.targetX-this.x, dy=this.targetY-this.y, dist=Math.sqrt(dx*dx+dy*dy);
+            if(dist>3){ this.x+=dx*0.18; this.y+=dy*0.18; } else { this.x=this.targetX; this.y=this.targetY; this.moving=false; this.startMining(); }
+          }
+          if(this.mining){
+            const cur = game.nodes[this.node];
+            if(cur && !cur.mined && this.energy>0){
+              this.miningProgress += 1 + (this.energy/100);
+              this.energy = Math.max(0, this.energy - 0.5);
+              const required = cur.difficulty * 80;
+              if(this.miningProgress >= required) this.completeMining();
+              if(Math.random()<0.25) this.createMiningParticle();
             }
-        });
-
-        // Check level completion
-        function checkLevelComplete() {
-            const allTargetsMined = game.targetNodes.every(id => game.completedNodes.has(id));
-            const allCatsAtTargets = game.cats.every(cat => game.targetNodes.includes(cat.node));
-            
-            if(allTargetsMined && allCatsAtTargets && !game.levelComplete) {
-                game.levelComplete = true;
-                
-                const config = levels[Math.min(game.level - 1, levels.length - 1)];
-                const timeBonus = Math.max(0, config.time - Math.floor((Date.now() - game.startTime) / 1000)) * 10;
-                const levelReward = config.reward + timeBonus;
-                
-                game.coins += levelReward;
-                updateUI();
-                
-                document.getElementById('level-coins').textContent = levelReward;
-                document.getElementById('level-complete').style.display = 'block';
-            }
+          }
+          if(!this.mining && this.energy < this.maxEnergy) this.energy += 0.4;
+          this.trail.push({x:this.x,y:this.y,alpha:1}); if(this.trail.length>8) this.trail.shift(); this.trail.forEach(t=>t.alpha*=0.86);
         }
-
-        // UI Updates
-        function updateUI() {
-            document.getElementById('level').textContent = game.level;
-            document.getElementById('coins').textContent = game.coins;
-            document.getElementById('blocks').textContent = game.blocks;
-            document.getElementById('hash').textContent = game.networkHash.toLocaleString();
+        moveTo(nodeId){
+          if(this.mining||this.moving) return false;
+          const canMove = this.node===nodeId || game.links.some(l=> (l.from===this.node&&l.to===nodeId) || (l.to===this.node&&l.from===nodeId));
+          if(canMove && nodeId < game.nodes.length){ this.node = nodeId; this.targetX = game.nodes[nodeId].x; this.targetY = game.nodes[nodeId].y; this.moving = true; this.miningProgress = 0; return true; }
+          return false;
         }
-
-        function updateMiningStatus(status) {
-            document.getElementById('mining-status').textContent = status;
-        }
-
-        function updateTimer() {
-            const elapsed = Math.floor((Date.now() - game.startTime) / 1000);
-            document.getElementById('timer').textContent = elapsed + 's';
-        }
-
-        // Level management
-        function nextLevel() {
-            game.level++;
-            generateLevel(game.level);
-            document.getElementById('level-complete').style.display = 'none';
-        }
-
-        function resetGame() {
-            game.level = 1;
-            game.coins = 0;
-            game.blocks = 0;
-            game.networkHash = 0;
-            generateLevel(1);
-            document.getElementById('level-complete').style.display = 'none';
+        startMining(){ const cur = game.nodes[this.node]; if(cur && !cur.mined){ this.mining = true; cur.mining = true; this.miningProgress = 0; updateMiningStatus('Mining Node ' + this.node); } }
+        completeMining(){
+          const cur = game.nodes[this.node];
+          if(cur){
+            cur.mined = true;
+            cur.mining = false;
+            game.completedNodes.add(this.node);
+            game.links.forEach(link=>{ if((link.from===this.node||link.to===this.node) && game.nodes[link.from].mined && game.nodes[link.to].mined) link.active = true; });
+            const baseReward = cur.difficulty * 25;
+            const energyBonus = Math.floor(this.energy/10) * 5;
+            const totalReward = baseReward + energyBonus;
+            game.coins += totalReward;
+            game.blocks++;
+            game.networkHash += cur.difficulty*1000;
+            this.createRewardParticles(totalReward);
             updateUI();
+            checkLevelComplete();
+          }
+          this.mining = false;
+          updateMiningStatus('Ready');
         }
-
-        // Game loop
-        function gameLoop() {
-            if(!game.levelComplete) {
-                game.cats.forEach(cat => cat.update());
-                updateTimer();
-            }
-            render();
-            requestAnimationFrame(gameLoop);
+        createMiningParticle(){ game.particles.push({x:this.x+(Math.random()-0.5)*20,y:this.y+(Math.random()-0.5)*20,vx:(Math.random()-0.5)*2,vy:(Math.random()-0.5)*2-1,life:30,type:'mining',size:Math.random()*3+1}); }
+        createRewardParticles(reward){ const count = Math.min(reward/10,15); for(let i=0;i<count;i++){ game.particles.push({x:this.x,y:this.y,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8-2,life:60,type:'coin',size:Math.random()*4+2}); } }
+        draw(ctx){
+          this.trail.forEach(t=>{ ctx.globalAlpha = t.alpha*0.4; ctx.fillStyle='#00ff41'; ctx.beginPath(); ctx.arc(t.x,t.y,4,0,Math.PI*2); ctx.fill(); }); ctx.globalAlpha = 1;
+          ctx.fillStyle = this.color; ctx.fillRect(this.x-8,this.y-6,16,12);
+          ctx.fillStyle = '#00ff41'; ctx.fillRect(this.x-5,this.y-3,2,2); ctx.fillRect(this.x+3,this.y-3,2,2);
+          ctx.fillStyle = this.color; ctx.fillRect(this.x-8,this.y-10,5,5); ctx.fillRect(this.x+3,this.y-10,5,5);
+          if(this.mining){ ctx.strokeStyle='#ffaa00'; ctx.lineWidth=2; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.arc(this.x,this.y,15,0,(this.miningProgress/(game.nodes[this.node].difficulty*80))*Math.PI*2); ctx.stroke(); ctx.setLineDash([]); }
+          const bw = 16; ctx.fillStyle='#330000'; ctx.fillRect(this.x-bw/2,this.y+10,bw,2); ctx.fillStyle = this.energy>30? '#00ff41' : '#ff4444'; ctx.fillRect(this.x-bw/2,this.y+10,(bw*this.energy)/this.maxEnergy,2);
+          ctx.fillStyle='#00ff41'; ctx.font='8px monospace'; ctx.textAlign='center'; ctx.fillText(this.id.toString(), this.x, this.y-15);
         }
+      }
 
-        // Initialize game
-        generateLevel(1);
-        updateUI();
-        gameLoop();
-        
-        // Make functions globally accessible for buttons
-        window.nextLevel = nextLevel;
-        window.resetGame = resetGame;
+      // -----------------------------
+      // Render
+      // -----------------------------
+      function render(){
+        ctx.fillStyle = '#000'; ctx.fillRect(0,0,game.width,game.height);
+        game.links.forEach(link=>{ const f = game.nodes[link.from], t = game.nodes[link.to]; ctx.strokeStyle = link.active ? '#00ff41' : '#003300'; ctx.lineWidth = link.active ? 3 : 2; if(link.active){ ctx.setLineDash([5,5]); ctx.lineDashOffset = Date.now()/100; } else ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(f.x,f.y); ctx.lineTo(t.x,t.y); ctx.stroke(); }); ctx.setLineDash([]);
+        game.nodes.forEach((node,i)=>{ let fillStyle, strokeStyle, lw; if(game.targetNodes.includes(i)){ fillStyle = node.mined ? 'rgba(0,255,65,0.5)' : 'rgba(255,170,0,0.2)'; strokeStyle = node.mined ? '#00ff41' : '#ffaa00'; lw=4; } else if(node.mined){ fillStyle='rgba(0,255,65,0.4)'; strokeStyle='#00ff41'; lw=3; } else if(node.mining){ fillStyle='rgba(255,170,0,0.3)'; strokeStyle='#ffaa00'; lw=3; } else { fillStyle='rgba(0,255,65,0.1)'; strokeStyle='#00ff41'; lw=2; } ctx.fillStyle=fillStyle; ctx.strokeStyle=strokeStyle; ctx.lineWidth=lw; ctx.beginPath(); ctx.arc(node.x,node.y,18,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.fillStyle = strokeStyle; ctx.font='10px monospace'; ctx.textAlign='center'; ctx.fillText(i.toString(), node.x, node.y-2); ctx.font='8px monospace'; ctx.fillText('D'+node.difficulty, node.x, node.y+8); if(!node.mined){ ctx.fillStyle='#666'; ctx.fillText('E'+node.energy, node.x, node.y+30); } });
+        game.particles = game.particles.filter(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.12; p.vx*=0.99; p.vy*=0.99; p.life--; ctx.globalAlpha = p.life/(p.type==='coin'?60:30); ctx.fillStyle = p.type==='coin' ? '#ffaa00' : '#00ff41'; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill(); return p.life>0; }); ctx.globalAlpha = 1;
+        game.cats.forEach(c=>c.draw(ctx));
+        // HUD
+        const totalNodes = game.nodes.length;
+        const minedNodes = game.completedNodes.size;
+        const targetMined = game.targetNodes.filter(id=>game.completedNodes.has(id)).length;
+        ctx.fillStyle = 'rgba(0,20,0,0.9)'; ctx.fillRect(10, game.height-80, 280, 70); ctx.strokeStyle='#003300'; ctx.strokeRect(10, game.height-80, 280, 70);
+        ctx.fillStyle = '#00ff41'; ctx.font='10px monospace'; ctx.textAlign='left';
+        ctx.fillText(`Nodes Mined: ${minedNodes}/${totalNodes}`, 15, game.height-60);
+        ctx.fillText(`Targets: ${targetMined}/${game.targetNodes.length}`, 15, game.height-44);
+        ctx.fillText(`Network: ${Math.floor((minedNodes/totalNodes)*100)}% Complete`, 15, game.height-28);
+      }
+
+      // -----------------------------
+      // Input
+      // -----------------------------
+      canvas.addEventListener('click', (e)=>{ const rect = canvas.getBoundingClientRect(); const x = e.clientX - rect.left; const y = e.clientY - rect.top; const clicked = game.nodes.findIndex(n=>{ const dx = x-n.x, dy = y-n.y; return Math.sqrt(dx*dx+dy*dy) < 25; }); if(clicked>=0){ const available = game.cats.filter(c=>!c.moving && !c.mining).sort((a,b)=>b.energy-a.energy)[0]; if(available) available.moveTo(clicked); } });
+
+      // -----------------------------
+      // Completion logic (configurable)
+      // -----------------------------
+      function checkLevelComplete() {
+        if (!game.nodes || game.nodes.length === 0) return;
+        const totalNodes = game.nodes.length;
+        const minedNodes = game.completedNodes.size;
+        const targetMined = game.targetNodes.filter(id=>game.completedNodes.has(id)).length;
+        const allTargetsMined = game.targetNodes.length === 0 ? false : game.targetNodes.every(id=>game.completedNodes.has(id));
+        const allNodesMined = minedNodes === totalNodes;
+
+        console.log(`[checkLevelComplete] mode=${COMPLETE_MODE} mined=${minedNodes}/${totalNodes} targets=${targetMined}/${game.targetNodes.length}`);
+
+        let shouldComplete = false;
+        if (COMPLETE_MODE === 'all') shouldComplete = allNodesMined;
+        else if (COMPLETE_MODE === 'targets') shouldComplete = allTargetsMined;
+        else shouldComplete = allNodesMined;
+
+        if (shouldComplete && !game.levelComplete) {
+          game.levelComplete = true;
+          const cfg = levels[Math.min(game.level-1, levels.length-1)];
+          const timeTaken = Math.floor((Date.now()-game.startTime)/1000);
+          const timeBonus = Math.max(0, cfg.time - timeTaken)*10;
+          const levelReward = cfg.reward + timeBonus;
+          game.coins += levelReward;
+          updateUI();
+          document.getElementById('level-coins').textContent = levelReward;
+          document.getElementById('level-complete').style.display = 'block';
+          console.log(`Level ${game.level} complete. mode=${COMPLETE_MODE}. mined=${minedNodes}/${totalNodes}. time=${timeTaken}s reward=${levelReward}`);
+          if (game.mode === 'offline') {
+            const best = getLocalBest(game.level);
+            if (!best || timeTaken < best.time) { setLocalBest(game.level, { time: timeTaken, coins: game.coins }); document.getElementById('bestTime').textContent = `${timeTaken}s`; }
+          }
+          if (game.mode === 'online' && game.ws && game.clientId) {
+            const payload = { type: 'finish', clientId: game.clientId, level: game.level, time: timeTaken, coins: game.coins };
+            try { game.ws.send(JSON.stringify(payload)); } catch(e){ console.warn('ws send finish failed', e); }
+          }
+          attemptAwardCatcoins(levelReward);
+          // cosmetic helper if you want: teleportCatsToTargets();
+        }
+      }
+
+      // Optional cosmetic teleport helper
+      function teleportCatsToTargets() {
+        if (!game.cats || !game.targetNodes) return;
+        game.targetNodes.forEach((t,i)=>{ const cat = game.cats[i % game.cats.length]; if(cat && game.nodes[t]){ cat.node = t; cat.x = game.nodes[t].x; cat.y = game.nodes[t].y; cat.targetX = cat.x; cat.targetY = cat.y; cat.moving = false; cat.mining = false; } });
+      }
+
+      // -----------------------------
+      // UI & scoreboard
+      // -----------------------------
+      function updateUI(){ document.getElementById('level').textContent = game.level; document.getElementById('coins').textContent = game.coins; document.getElementById('blocks').textContent = game.blocks; document.getElementById('hash').textContent = game.networkHash.toLocaleString(); }
+      function updateMiningStatus(s){ document.getElementById('mining-status').textContent = s; }
+      function updateTimer(){ document.getElementById('timer').textContent = Math.floor((Date.now()-game.startTime)/1000) + 's'; }
+      function renderPlayersList(){ const el = document.getElementById('playersList'); const players = Object.values(game.players).sort((a,b)=> (a.time||99999)-(b.time||99999)); if(players.length===0){ el.textContent='No players connected'; return; } el.innerHTML = players.map(p=>`<div style="margin-bottom:6px">${p.name||p.clientId} — ${p.status||'playing'} ${p.time?` — ${p.time}s`:''} <div style="font-size:9px;color:#aaa">Coins: ${p.coins||0}</div></div>`).join(''); }
+
+      // -----------------------------
+      // Robust WebSocket handler
+      // -----------------------------
+      function connectMultiplayer(){
+        if(!WS_SERVER){ alert('WS_SERVER not configured in this file. Set WS_SERVER to your websocket server URL.'); return; }
+        if(game.ws){ game.ws.close(); }
+        game.mode = 'online'; document.getElementById('mode').textContent = 'Online';
+        const clientId = 'p_' + Math.random().toString(36).slice(2,9);
+        game.clientId = clientId;
+        const ws = new WebSocket(WS_SERVER);
+        game.ws = ws;
+        ws.addEventListener('open', ()=>{ console.log('ws open'); ws.send(JSON.stringify({ type:'join', clientId, name: (window.ethereum && window.ethereum.selectedAddress) ? window.ethereum.selectedAddress.slice(0,8) : clientId })); });
+        ws.addEventListener('message', (m)=>{
+          (async ()=>{
+            try{
+              let raw;
+              if(typeof m.data === 'string'){ raw = m.data; }
+              else {
+                try { raw = await m.data.text(); }
+                catch(e){ const buf = await m.data.arrayBuffer(); raw = new TextDecoder().decode(buf); }
+              }
+              try { const data = JSON.parse(raw); handleWsMessage(data); return; } catch(e){ /* not json */ }
+              const firstJsonIdx = Math.min(...['{','['].map(ch => { const i = raw.indexOf(ch); return i===-1 ? Infinity : i; }));
+              if(firstJsonIdx !== Infinity){
+                const jsonPart = raw.slice(firstJsonIdx);
+                try { const data = JSON.parse(jsonPart); console.warn('Parsed JSON from substring of raw ws message. Raw:', raw); handleWsMessage(data); return; } catch(e2){ console.warn('Substring JSON parse failed. Raw:', raw); }
+              }
+              console.warn('Received non-JSON WebSocket message (ignored):', raw);
+            }catch(err){ console.error('Failed to process WebSocket message:', err, m); }
+          })();
+        });
+        ws.addEventListener('close', ()=>{ game.mode='offline'; document.getElementById('mode').textContent='Offline'; game.ws=null; renderPlayersList(); });
+        ws.addEventListener('error', (e)=>{ console.error('ws error', e); alert('WebSocket error. Check server console.'); });
+      }
+
+      function handleWsMessage(data){
+        try{
+          if(data.type === 'state'){ game.players = data.players || {}; renderPlayersList(); }
+          else if(data.type === 'chat'){ /* noop */ }
+          else if(data.type === 'start'){ if(data.levelConfig) applyServerLevel(data.levelConfig); game.startTime = Date.now(); document.getElementById('level-complete').style.display = 'none'; }
+          else if(data.type === 'finish'){ game.players = game.players || {}; if(data.clientId){ game.players[data.clientId] = game.players[data.clientId] || {}; game.players[data.clientId].time = data.time; game.players[data.clientId].coins = data.coins; game.players[data.clientId].name = data.name || data.clientId; game.players[data.clientId].status = 'finished'; } renderPlayersList(); }
+          else { console.log('WS unknown data:', data); }
+        }catch(e){ console.error('handleWsMessage error', e, data); }
+      }
+
+      function applyServerLevel(cfg){
+        if(cfg && cfg.nodes && cfg.links){
+          game.nodes = cfg.nodes;
+          game.links = cfg.links;
+          game.targetNodes = cfg.targetNodes || [];
+          game.cats = [];
+          for(let i=0;i<(cfg.cats||1);i++) game.cats.push(new NetworkCat(i, game.nodes[0].x, game.nodes[0].y));
+        }
+      }
+
+      // -----------------------------
+      // MetaMask (best-effort) & token award
+      // -----------------------------
+      let provider = null; let userAddress = null;
+      async function connectWallet(){ if(window.ethereum){ try{ provider = window.ethereum; const accounts = await provider.request({ method:'eth_requestAccounts' }); userAddress = accounts[0]; document.getElementById('connectWallet').textContent = `${userAddress.slice(0,6)}...`; return userAddress; }catch(e){ alert('Wallet connection rejected'); } } else alert('MetaMask not found'); }
+
+      async function addTokenToWallet(){
+        if(!window.ethereum){ alert('MetaMask not found'); return; }
+        if(!CATCOIN_TOKEN_ADDRESS) alert('No catcoin token address configured in file. This will just add a mock token entry if you choose.');
+        try{
+          const added = await window.ethereum.request({ method:'wallet_watchAsset', params: { type:'ERC20', options: { address: CATCOIN_TOKEN_ADDRESS || '0x0000000000000000000000000000000000000000', symbol: CATCOIN_TOKEN_SYMBOL, decimals: CATCOIN_TOKEN_DECIMALS, image: 'https://raw.githubusercontent.com/your/repo/main/catcoin.png' } } });
+          if(added) alert('CatCoin token added to wallet (or request sent).'); else alert('Token add was rejected.');
+        }catch(e){ console.error(e); alert('Could not add token'); }
+      }
+
+      async function attemptAwardCatcoins(amount){
+        try{
+          const key = `catcoin_token_bal_${userAddress||'local'}`;
+          const prev = parseFloat(localStorage.getItem(key) || '0');
+          const add = amount/100;
+          localStorage.setItem(key, (prev+add).toString());
+          console.log('Local CAT balance updated', prev+add);
+        }catch(e){ console.warn(e); }
+
+        if(window.ethereum && CATCOIN_TOKEN_ADDRESS){
+          try{
+            const ifaceData = '0x40c10f19';
+            const to = userAddress || (await connectWallet());
+            const valueToMint = (BigInt(Math.floor(amount)) * BigInt(10 ** CATCOIN_TOKEN_DECIMALS)).toString(16);
+            const data = ifaceData + to.replace('0x','').padStart(64,'0') + valueToMint.padStart(64,'0');
+            await window.ethereum.request({ method:'eth_sendTransaction', params:[{ from: to, to: CATCOIN_TOKEN_ADDRESS, data }] });
+            alert('Mint transaction sent (check MetaMask).');
+          }catch(e){ console.warn('mint attempt failed', e); }
+        }
+      }
+
+      // -----------------------------
+      // Init, loop & controls
+      // -----------------------------
+      function nextLevel(){ game.level++; generateLevel(game.level); document.getElementById('level-complete').style.display='none'; updateUI(); }
+      function resetGame(){ game.level=1; game.coins=0; game.blocks=0; game.networkHash=0; generateLevel(1); document.getElementById('level-complete').style.display='none'; updateUI(); }
+
+      function gameLoop(){ if(!game.levelComplete){ game.cats.forEach(c=>c.update()); updateTimer(); } render(); requestAnimationFrame(gameLoop); }
+
+      generateLevel(1); updateUI(); gameLoop();
+
+      document.getElementById('connectBtn').addEventListener('click', ()=>connectMultiplayer());
+      document.getElementById('newGameBtn').addEventListener('click', ()=>resetGame());
+      document.getElementById('connectWallet').addEventListener('click', async ()=>{ await connectWallet(); });
+      document.getElementById('addToken').addEventListener('click', async ()=>{ await addTokenToWallet(); });
+
     </script>
-</body>
+  </body>
 </html>
